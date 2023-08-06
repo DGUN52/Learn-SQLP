@@ -48,13 +48,13 @@
       - DB 복구, 캐시 복구(Instance Recovery의 roll forward), Fast commit
         - fast commit : 데이터 변경 시 디스크의 데이터 블록에 반영하는 작업은 랜덤 액세스 방식으로 느리기 때문에, 로그에 append 방식으로 기록해둔 뒤 DBWR같은 방식을 이용 해서 후에 Batch방식으로 일괄 수행할 수 있다.
   - DML수행마다 Redo로그가 생성된다. -> DML 성능 영향
-    - INSERT 작업에 Redo 로깅 생략 가능한 이유
+    - INSERT 작업에 Redo 로깅 생략 가능한 이유 -> 뒤의 6.2.2에서 설명
 
 6. Undo(rollback) 로깅과 DML성능
   - Redo : 트랜잭션 재현에 필요한 정보 로깅
   - Undo : 변경된 블록을 이전 상태로 돌리는데 필요한 정보 로깅
   - 용도 : Transaction Rollback, Transaction Recovery(Instance Recovery의 rollback), Read Consistency
-    - 읽기 일관성 Read Consistency : 동시 트랜잭션이 증가할수록 블록 IO 증가, 성능 저하
+    - 읽기 일관성 Read Consistency모드가 성능에 주는 영향 : 동시 트랜잭션이 증가할수록 RC모드에 의해 블록 IO 증가, 성능 저하
     - Consistent모드 : 쿼리가 시작된 이후 다른 트랜잭션이 변경한 블록을 만나면 원본 블록의 사본을 만들고 Undo 데이터를 적용해 블록의 처음 시점을 읽는 방식
       - 이 모드와 Undo 데이터로 인해 원본 블록 하나가 여러 복사본으로 캐시에 존재할 수 있다.
     - Current모드 : 디스크에서 캐시로 적재된 원본 블록을 현재 상태 그대로 읽는 방식
@@ -106,7 +106,7 @@
 - 절차적 루프 처리
   - loop문 안에 commit;을 둘 경우 성능 저하 (필요한 경우 10만번에 한번과 같은 조건을 두기)
 - OneSQL의 중요성
-  - Insert Ito Select, 수정가능 조인 뷰(6.1.5), Merge문(6.1.6)을 적극 활용하여 One SQL로 구현
+  - Insert Into Select, 수정가능 조인 뷰(6.1.5), Merge문(6.1.6)을 적극 활용하여 One SQL로 구현
  
 6.1.3 Array Processing 활용
 - Call 발생량이 많을 시 배열에 모아서 한번에 execute
@@ -130,7 +130,92 @@
 - 08.05(토) 393p ~ 421p
 
 
+6.1.5 수정가능 조인 뷰
+- 전통적인 방식의 UPDATE문을 활용하면 비효율을 완전히 해소할 수 없다.
+  - 같은 테이블을 두번 조회하는 등의 비효율이 존재
+- 수정가능 조인 뷰 활용 시(12c이후)
+  - 조인뷰 : from절에 두 개 이상의 테이블을 가진 뷰
+    - 이 조인뷰가 입력, 수정, 삭제가 가능하면 수정가능 조인 뷰
+    - 단 1:M에서 m쪽에만 수정 가능
+      - ex) emp(m)와 dept(1) 테이블을 합친 뷰에서 job(m)="CLERK"인 레코드의 loc(1)="SEOUL'로 수정하면 원하지 않는 레코드의 loc까지 변경될 것이다.
+    - pk제약이나 unique index가 설정되지 않으면 조인뷰에 입력/수정/삭제가 불가능하다.(DBMS에러)
+      - alter table A add constraint A_pk primary key (col_id);
+      - 위처럼 1쪽 집합에 pk를 설정 해준 다음 조작 시 정상작동한다.
+      - pk설정을 해준 1쪽집합은 비 키-보존 테이블이 되고 m쪽집합 테이블은 키-보존 테이블로 남는다.
+     
+- 키 보존 테이블 Key-Preserved Table
+  - 조인된 결과집합을 통해서도 중복 값 없이 유일하게 식별 가능한 테이블
+  - 조인 뷰의 조인하는 테이블에 pk 혹은 최소 unique 인덱스가 있어야 조인뷰를 수정할 수 있다.
+  - (!!!키가 보존된 쪽의 레코드만 수정할 수 있다는 말!!!)
+  - 위의 예시에서 dept 테이블에 pk를 걸어주며 조인 시에는 unique한 값들과 조인하는 emp테이블이 키-보존 테이블이 된다.
+  - (emp테이블에도 pk/unique index가 설정돼있어야 emp테이블의 키도 보존된다.)
+  - (반대로 1쪽에 pk/unique index가 설정돼있어도 m쪽 집합에서 1쪽 레코드를 다량 참조하기 때문에 키가 보존되지 않을 수 있다. 다만 이는 조인뷰가 group by (1쪽 테이블의 pk/unique 컬럼) 이런식으로 조인뷰에서 1쪽 테이블의 pk가 중복되지 않게 쿼링되면 1쪽의 키는 보존된다고 볼 수 있다.)
+  - 설정들로 인해 DBMS가 수정불가능한 조인뷰 Non updatable join view라고 판단하면 에러가 발생할 수 있음
+    - /*+ byass_ujvc */ 힌트를 사용하여 에러 회피(11g이후)
+    - 혹은 MERGE문으로 바꾸어야 한다. 다만 에러 회피시 데이터의 무결성 보존에 유의해야한다.
+
+6.1.6 MERGE문 활용
+- Data Warehouse에서 자주 발생하는 오퍼레이션
+  - 기간계 시스템에서 가져온 신규 트랜잭션 데이터를 반영하여 두 시스템 간의 데이터 동기화 작업
+    - ex) 고객 테이블의 변경데이터를 dw에 반영하는 프로세스 (추출 전송 적재)
+      1. 전 일 변경 데이터 추출
+         ```sql
+         create table customer_delta
+         as
+         select * from customer
+         where mod_dt >= trunc(sysdate)-1
+         and mod_dt < trunc(sysdate);
+         ```
+      2. 생성한 customer_delta 테이블을 DW시스템으로 전송
+      3. DW시스템으로 적재
+        ```sql
+        merge into customer t using customer_delta s on (t.cust_id = s.cust_id)
+        when matched then update
+          set t.cust_nm = s.cust_nm, t.email = s.email, ...
+        when not matched then insert
+          (cust_id, cust_nm, email, tel_no, region, addr, reg_dt) values
+          (s.cust_id, s.cust_nm, s.email, s.tel_no, s.region, s.addr, s.reg_dt);
+        ```
+    - 이처럼 update와 insert가 섞인 MERGE문을 UPSERT라고 하기도 한다.
+
+  - Optional Clauses (UPDATE와 INSERT의 선택적 처리)
+    - 일괄 처리가 아닌 별개의 처리
+    ```sql
+    merge into customer t using customer_delta s on (t.cust_id = s.cust_id)
+    when matched then update
+      set t.cust_nm = s.cust_nm, t.email = s.email, ... ;
+
+    merge into customer t using customer_delta s on (t.cust_id = s.cust_id)
+    when not matched -- (insert문 생략)
+    ```
+  - 이 머지문을 통해 updatable join view를 대체할 수 있다.
+
+- Conditional Operations
+  - 위의 on 절에 건 조건 외에도 추가로 조건절을 기술할 수 있다.
+  - update/insert문 마지막에 where문 추가를 통해서 조건 추가 기술.
+ 
+- DELETE CLAUSE
+  - 이미 저장된 데이터를 조건에 따라 삭제
+  - merge문에서 delete문 추가
+    - update문 바로 뒤에 delete문을 추가 하는 경우 update문이 반영된 결과 기준으로 delete한다.(null값 주의)
+    - 또한 조인이 성공된 데이터만 삭제 가능.(update가 delete 바로 위에 있을 경우 update도 마찬가지로 조인 성공된 데이터만..)
+
+- MERGE문을 활용하면 기존 select ~; if (condition) then insert ~ else update ~ end if; 구문에선 항상 두번씩 쿼리를 수행해야하던 것을 한번 수행으로 끝낼 수 있다.
+- INSERT 없는 MERGE문을 사용하는 경우 USING절에 검증용 SELECT문을 만들 경우 테이블을 두번 조회한다.(select 한번 update 한번)
+  - 이럴 때 select절 없는 merge문이나 update문(수정가능 조인 뷰 이용)을 이용하여 성능을 향상시키는 것이 바람직하다.
 
 
 
-  
+<h2>6장 내용이 방대함으로 md파일을 part 1과 2로 나누어 기록</h2>
+- 08.06(일)(1) 422p ~ 435p
+
+
+
+
+
+
+
+
+
+
+

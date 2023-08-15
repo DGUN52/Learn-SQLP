@@ -279,4 +279,71 @@ for update of t.column
 
 
 
-- ※ 8.14(월) 
+- ※ 8.14(월) ~481p
+
+
+
+  - PL/SQL의 자율 트랜잭션
+    - 메인 트랜잭션에 영향을 주지 않고 서브 트랜잭션에서 일부 자원만 Lock을 해제할 수 있음
+      ```sql
+      create or replace function seq_funcname(l_gubun number) return number
+      as
+        pragma autonomous_transaction; -- 자율트랜잭션으로 선언하여 일부 자원만 lock 해제하는 구문
+        l_new_seq seq_tab.seq%type;
+      begin
+        update seq_tab
+        set seq = seq + 1 -- 채번테이블
+        where ~;
+
+        select seq into l_new_Seq
+        from seq_tab
+        where ~;
+
+        commit;
+        return l_new_seq;
+      end;
+      ```
+    - 자율트랜잭션의 내부에서 커밋을 수행해도 메인 트랜잭션은 커밋되지 않은 상태로 남는다.
+    - 반면 채번테이블의 Lock은 해제한 상태이므로 다른 트랜잭션에 영향을 주지 않는다.
+      ```sql
+      insert into target_tab values (seq_nextval(123), :x, :y, :z);
+
+- 시퀀스 오브젝트
+  - 성능이 빠름
+  - 중복 레코드 대비 예외처리 하지 않아도 됨
+  - 반면 테이블별로 시퀀스 오브젝트를 생성하고 관리해야함
+  - 시퀀스 채번 과정에서 Lock 발생으로 성능 이슈
+  - 시퀀스 오브젝트는 오라클 내부에서 관리하는 채번테이블(SYS_SEQ$ 테이블, DBA_SEQUENCES뷰)
+    - Lock메커니즘 작동
+  - 캐시사이즈를 설정하면 가장 빠름
+  - 자율 트랜잭션 구현됨
+ 
+- 오라클의 시퀀스 오브젝트 Lock
+  1. 로우 캐시 Lock
+     - 딕셔너리 캐시, 로우단위로 IO하기 때문에 로우 Lock이라 부름
+     - (딕셔너리 : 테이블, 인덱스, 테이블스페이스, 데이터파일, 세그먼트, 익스텐트, 사용자, 제약, 시퀀스, DB Link 등에 관한 정보)
+     - 공유캐시(SGA)의 구성요소인 로우 캐시를 사용할 때 액세스를 직렬화 해야하고 이 때 Lock을 사용한다.
+     - 채번빈도가 낮다면 CACHE설정을 높이고 채번빈도가 낮다면 NOCACHE옵션 사용
+       ```sql
+       create sequence MYSEQ cache 1000;
+       ```
+  2. 시퀀스 캐시 Lock
+    - SGA에 위치, 액세스 직렬화용 
+  3. SV Lock
+    - 시퀀스 캐시는 한 인스턴스 내에서 공유되어 인스턴스 내에서의 번호 순서 보장
+    - 인스턴스가 여러개인 RAC환경에서는 인스턴스마다 시퀀스 캐시를 따로갖고, 인스턴스 간 번호 순서 보장되지 않음
+    - 이런 경우에 ORDER옵션을 사용하면 인스턴스 간에도 순서가 보장되며 시퀀스 캐시 하나로 모든 RAC 노드가 사용한다.
+    - 이런 RAC환경에선 SV Lock을 통해 액세스 직렬화
+    - SV Lock은 네트워크를 통해 공유되는 시퀀스 캐시 락
+    - 성능적으로는 바람직하지 않다.
+
+- 시퀀스는 기본적으로 PK가 단일컬럼이어야 한다.
+     
+
+
+
+
+
+
+
+    

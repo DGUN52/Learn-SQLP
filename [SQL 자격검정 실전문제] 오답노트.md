@@ -28,4 +28,11 @@
     - to this
     - ![image](https://github.com/DGUN52/Learn-SQLP/assets/125403830/7e29c241-41ff-4639-98f5-3bc8874214a7)
   - 5차 정규화 : 조인종속이 없고 조인 시 데이터 손실이 없어야 한다.
-
+----------
+# SQL 기본 및 활용
+- Grouping 함수 결과형태 파악하기
+  - GROUP BY ROLLUP() : 괄호 안의 컬럼 각각의 소계와 전체 합계 제공, 단 뒷순서의 **컬럼부터 추가해가며 그루핑 **
+  - GROUP BY CUBE() : 괄호 안의 컬럼으로 만들 수 있는 모든 그룹핑 경우의 수에 대한 소계 제공
+  - GROUP BY GROUPING SETS() : 괄호 안의 컬럼에 대한 그룹핑 소계 제공
+- Grouping 함수에서 null값을 다른 값으로 보여줄 다음과 같은 형태 파악하기
+  - CASE WHEN GROUPING(col_a) = 1 THEN 'a컬럼전체' ELSE (col_a) END

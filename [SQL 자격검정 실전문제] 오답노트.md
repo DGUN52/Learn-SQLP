@@ -36,3 +36,14 @@
   - GROUP BY GROUPING SETS() : 괄호 안의 컬럼에 대한 그룹핑 소계 제공
 - Grouping 함수에서 null값을 다른 값으로 보여줄 다음과 같은 형태 파악하기
   - CASE WHEN GROUPING(col_a) = 1 THEN 'a컬럼전체' ELSE (col_a) END
+
+-----------
+# 아키텍처 기반 튜닝
+- 공유서버 전용서버
+- Buffer pinning
+- Log Force at commit
+- Write Ahead Logging
+- Delayed Block Cleanout
+- sql서버 문법 의미
+  - from 'table1' with (READPAST)
+- Lock 종류 http://wiki.gurubee.net/pages/viewpage.action?pageId=22904833

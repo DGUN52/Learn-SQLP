@@ -47,3 +47,6 @@
 - sql서버 문법 의미
   - from 'table1' with (READPAST)
 - Lock 종류 http://wiki.gurubee.net/pages/viewpage.action?pageId=22904833
+- DML작업 중 SELECT는 SHARED Lock, 나머지 U D I는 ROW EXCLUSIVE Lock, Transaction은 Exclusive Lock 획득
+- 트랜잭션 격리성 수준
+- MVCC

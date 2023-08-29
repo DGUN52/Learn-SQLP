@@ -55,3 +55,9 @@
   3. Statspack
   4. AWR Automatic Workload Repository
   5. ASH Active Session History - dba_hist_active_ses_history : 오래전에 사용된 세션 히스토리 정보
+ 
+## 인덱스 튜닝 - 인덱스 기본 원리
+- 인덱스 구성 컬럼이 전부 not null 이 아닌 nullable이라면 index Range scan을 사용할 수 없다.
+  - 전부 null인 경우가 인덱스에 저장되지 않아 쿼리결과에서 값이 누락되기 때문
+
+## 인덱스 튜닝 - 테이블 액세스 최소화

@@ -61,3 +61,77 @@
   - 전부 null인 경우가 인덱스에 저장되지 않아 쿼리결과에서 값이 누락되기 때문
 
 ## 인덱스 튜닝 - 테이블 액세스 최소화
+
+## 조인 튜닝
+### 고급 조인 기법
+- decode함수나 case문법을 사용하여 조건을 만족하는 값이 없을 경우 null값을 반환하게 하면 **조건을 만족하는 경우에만 조인을 시도하는 쿼리**를 작성할 수 있다!
+
+- 유용한 인라인 뷰 사용법(nl조인이나 hash조인, 부분범위 처리, 소트부하 감소 등 다양한 용도로 사용)
+- ```sql
+  SELECT /*+ LEADING(A) USE_NL(B)*/
+    A.~, A.~, A.~, ...
+    B.~, B.~, ... 
+  FROM (SELECT /*+ FULL(A) INDEX_FFS(B) LEADING(B) USE_HASH(A) */ /* 필요에 따라 알맞은 힌트 제시, 인라인 뷰에는 모든 기술이 들어간 쿼리 기재 */
+          A.~, MAX(B.~), SUM(A), ...
+        FROM tableA A, tableB B
+        WHERE A.colA = ~ /* 인덱스와 요구사항에 알맞은 where절 기술 */
+        GROUP BY A.colA
+        ORDER BY) A, tableB B2
+  WHERE A.ROWID = B.ROWID /* 혹은 A.colA = B.colB 와 같은 조인 */
+  ORDER BY A.colD ASC/DESC
+  ;
+  ```
+
+- 이력테이블에서 가장 최근 상태를 구하는 쿼리 형태
+  - ```sql
+    SELECT A.colA, A.colC, ..., B.colD, ... /* 문제에서 요구하는 필요한 인자들*/
+    FROM tableA A, tableB B
+    WHERE colB = :colB -- 특정 인자에 대한 사전 조건(들)
+      and B.ROWID = (
+      SELECT rid
+      FROM(
+        SELECT ROWID rid
+        FROM tableB
+        WHERE A.colA = colA -- 인덱스 고려 조인컬럼
+        ORDER BY /* 부분범위 처리 가능하게 할 인덱스 인자 */
+      )
+      WHERE A.rownum <= 1
+    )
+    ORDER BY A.colA
+    ```
+
+- 이력테이블에서 가장 최근 상태의 직전 상태를 구하는 쿼리 형태
+  - ```sql
+    SELECT A.colA, A.colC, ..., B.colD, ... /* 문제에서 요구하는 필요한 인자들*/
+    FROM tableA A, tableB B
+    WHERE colB = :colB -- 특정 인자에 대한 사전 조건(들)
+      and B.ROWID = (
+      SELECT rid
+      FROM(
+        SELECT ROWID rid
+        FROM tableB
+        WHERE 변경일자 < A.최종상태변경일자 -- 인덱스 고려 조인컬럼
+        ORDER BY /* 부분범위 처리 가능하게 할 인덱스 인자 */
+      )
+      WHERE A.rownum <= 1
+    )
+    ORDER BY A.colA
+    ```
+
+- 선분이력테이블에서 가장 최근 상태를 구하는 쿼리 형태
+  - ```sql
+    SELECT A.colA, A.colB, ... /* 필요한 인자*/
+    FROM tableA A, tableB B
+    WHERE A.colA = B.colA -- 조인
+      and B.유효시작일자 < sysdate
+      and B.유효종료일자 >= sysdate
+    ```
+- 선분이력테이블에서 가장 최근 상태의 직전 상태를 구하는 쿼리 형태
+  - ```sql
+    SELECT /* 필요한 인자 */
+    FROM tableA A, tableB B
+    WHERE A.colA = B.colA --조인
+      and B.유효시작일자 < A.최종변경일자
+      and B.유효종료일자 >= A.최종변경일자-1/24/60/60
+    
+  
